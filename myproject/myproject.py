@@ -7,6 +7,7 @@ import tensorflow as tf
 
 from keras.models import Sequential
 from keras.layers import Dense
+from keras.layers import RNN
 from keras.layers import LSTM
 from keras.layers import Dropout
 from tensorflow.keras import initializers
@@ -72,6 +73,8 @@ def linreg(X, Y, XForecast, classification):
     
     return predicted
     
+
+# VANILLA NEURAL NETWORK
 @xw.func
 @xw.arg("X", np.array, ndim = 2)
 @xw.arg("Y", np.array, ndim=2)
@@ -128,10 +131,86 @@ def nn_simple(X, Y, XForecast, hiddenLayerNodes, classification, activation, epo
     predicted = model.predict(XForecast)
     return predicted
 
-#Se till att alla listor initieras korrekt, RNN- done
-#Lägg till RNN/GRU/LSTM i valbara menyn- done
-#Börja skriva RNN-koden, utgå från NN
 
+#RECURRENT NEURAL NETWORK
+@xw.func
+@xw.arg("X", np.array, ndim = 2)
+@xw.arg("Y", np.array, ndim=2)
+@xw.arg("XForecast", np.array, ndim = 2)
+def rnn_py(X, Y, XForecast, hiddenLayerNodes, classification, activation, epochs, batchSize, lr,
+            rnnActivation, rnnType, dropout, rnnDropout, rnnLookback):
+
+    X = X.astype(np.float)
+    XForecast = XForecast.astype(np.float)
+    Y = Y.astype(np.float)
+
+    X, XForecast = scale(X, XForecast)
+
+    if classification:
+        metric = 'accuracy'
+        if Y.shape[1]>1:
+            # ASSUMES labels are one hot encoded
+            output_activation = "softmax"
+            loss = "categorical_crossentropy"
+        else:
+            # ASSUMES labels of 0 or 1
+            output_activation = "sigmoid"
+            loss = 'binary_crossentropy'
+    else:
+        output_activation = "linear"
+        metric = "mae"
+        loss = "mse"
+        
+    x_reshaped = np.array()
+    y_reshaped = np.array()
+    x_forecast_reshaped = np.array()
+
+    # Reshape the array according to look-back period provided by the user
+    for i in range(rnnLookback, X.shape[0]):
+        x_reshaped.append(X[(i-rnnLookback):i+1, :])
+        Y_reshaped.append(Y[i, :])
+
+    for i in range(rnnLookback, XForecast.shape[0]):
+        x_forecast_reshaped.append(XForecast[(i-rnnLookback):i, :])
+    
+    return_sequences = [True for i in range(len(hiddenLayerNodes))]
+    return_sequences[-1] = False
+
+    model = Sequential()
+    initializer = initializers.HeUniform()
+    if rnnType == "RNN":
+        model.add(RNN(hiddenLayerNodes[0], input_dim = (x_reshaped.shape[0], rnnLookback, x_reshaped.shape[1]), kernel_initializer = initializer, activation = activation,
+                    return_sequences = return_sequences[0], recurrent_activation = rnnActivation, dropout = dropout, recurrent_dropout = rnnDropout))
+        
+        for i in range(1, len(hiddenLayerNodes)):
+            model.add(RNN(hiddenLayerNodes[i],return_sequences = return_sequences[i], activation = activation, kernel_initializer = initializer,
+             return_sequences = return_sequences[0], recurrent_activation = rnnActivation, dropout = dropout, recurrent_dropout = rnnDropout))
+            
+        model.add(Dense(Y.shape[1], activation = output_activation, kernel_initializer = initializer))
+    elif rnnType == "LSTM":
+
+
+    else:
+
+    opt = keras.optimizers.Adam(learning_rate = float(lr))
+    model.compile(loss=loss, optimizer = opt, metrics = metric)
+    history = model.fit(X, Y, epochs = int(epochs), batch_size = int(batchSize), verbose = 1)
+
+
+    dirname = os.path.dirname(__file__)
+    
+    f = open(os.path.join(dirname, "rnn model log.txt"), "w")
+    f.write(str(history.history))
+    f.write('\n')
+    model.summary(print_fn=lambda x: f.write(x + '\n'))
+    f.close()
+
+    predicted = model.predict(XForecast)
+    return predicted
+
+
+
+# SUPPORT VECTOR MACHINE
 @xw.func
 @xw.arg("X", np.array, ndim = 2)
 @xw.arg("Y", np.array, ndim=2)

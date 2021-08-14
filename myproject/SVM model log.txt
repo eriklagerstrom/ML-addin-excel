@@ -1,2 +1,2 @@
 Artificial R^2 with train/test split
-0.6264404703767987
+0.5254713088042104

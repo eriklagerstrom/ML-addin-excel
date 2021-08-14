@@ -7,8 +7,10 @@ import tensorflow as tf
 
 from keras.models import Sequential
 from keras.layers import Dense
-from keras.layers import RNN
-from keras.layers import LSTM
+from keras.layers import Flatten
+from keras.layers import MaxPooling1D, MaxPooling2D, MaxPooling3D
+from keras.layers import Conv1D, Conv2D, Conv3D
+from keras.layers import SimpleRNN, LSTM, GRU
 from keras.layers import Dropout
 from tensorflow.keras import initializers
 import keras
@@ -145,6 +147,13 @@ def rnn_py(X, Y, XForecast, hiddenLayerNodes, classification, activation, epochs
     Y = Y.astype(np.float)
 
     X, XForecast = scale(X, XForecast)
+    rnnLookback = int(rnnLookback)
+
+    dropout = float(dropout)
+    rnnDropout = float(rnnDropout)
+    num_features = X.shape[1]
+    rows_train = X.shape[0]-rnnLookback
+    rows_forecast = XForecast.shape[0]-rnnLookback
 
     if classification:
         metric = 'accuracy'
@@ -161,41 +170,54 @@ def rnn_py(X, Y, XForecast, hiddenLayerNodes, classification, activation, epochs
         metric = "mae"
         loss = "mse"
         
-    x_reshaped = np.array()
-    y_reshaped = np.array()
-    x_forecast_reshaped = np.array()
+    x_reshaped = np.array([])
+    y_reshaped = np.array([])
+    x_forecast_reshaped = np.array([])
 
     # Reshape the array according to look-back period provided by the user
-    for i in range(rnnLookback, X.shape[0]):
-        x_reshaped.append(X[(i-rnnLookback):i+1, :])
-        Y_reshaped.append(Y[i, :])
+    for i in range(int(rnnLookback), int(X.shape[0])):
+        x_reshaped = np.append(x_reshaped, X[(i-rnnLookback):i+1, :])
+        y_reshaped = np.append(y_reshaped, Y[i, :])
 
-    for i in range(rnnLookback, XForecast.shape[0]):
-        x_forecast_reshaped.append(XForecast[(i-rnnLookback):i, :])
+    for i in range(int(rnnLookback), int(XForecast.shape[0])):
+        x_forecast_reshaped = np.append(x_forecast_reshaped, XForecast[(i-rnnLookback):i+1, :])
     
-    return_sequences = [True for i in range(len(hiddenLayerNodes))]
+    try:
+        return_sequences = [True for i in range(len(hiddenLayerNodes))]
+    except:
+        hiddenLayerNodes = [hiddenLayerNodes]
+        return_sequences = [True]
+    
     return_sequences[-1] = False
-
+    x_reshaped = np.reshape(x_reshaped, (rows_train, rnnLookback+1, num_features))
+    x_forecast_reshaped = np.reshape(x_forecast_reshaped, (rows_forecast, rnnLookback+1, num_features))
+        
     model = Sequential()
     initializer = initializers.HeUniform()
+
     if rnnType == "RNN":
-        model.add(RNN(hiddenLayerNodes[0], input_dim = (x_reshaped.shape[0], rnnLookback, x_reshaped.shape[1]), kernel_initializer = initializer, activation = activation,
-                    return_sequences = return_sequences[0], recurrent_activation = rnnActivation, dropout = dropout, recurrent_dropout = rnnDropout))
+        #, input_dim = (x_reshaped.shape[0]'
+        model.add(SimpleRNN(units = hiddenLayerNodes[0], input_shape =(rnnLookback+1, num_features), kernel_initializer = initializer, activation = activation,
+                    return_sequences = return_sequences[0], dropout = dropout, recurrent_dropout = rnnDropout))
         
         for i in range(1, len(hiddenLayerNodes)):
-            model.add(RNN(hiddenLayerNodes[i],return_sequences = return_sequences[i], activation = activation, kernel_initializer = initializer,
-             return_sequences = return_sequences[0], recurrent_activation = rnnActivation, dropout = dropout, recurrent_dropout = rnnDropout))
-            
-        model.add(Dense(Y.shape[1], activation = output_activation, kernel_initializer = initializer))
+            model.add(SimpleRNN(units = hiddenLayerNodes[i],return_sequences = return_sequences[i], activation = activation, kernel_initializer = initializer,
+            dropout = dropout, recurrent_dropout = rnnDropout))
+
     elif rnnType == "LSTM":
-
-
-    else:
+        #, input_dim = (x_reshaped.shape[0]
+        model.add(LSTM(units = hiddenLayerNodes[0], input_shape =(rnnLookback+1, num_features), kernel_initializer = initializer, activation = activation,
+            return_sequences = return_sequences[0], recurrent_activation = rnnActivation, dropout = dropout, recurrent_dropout = rnnDropout))
+        
+        for i in range(1, len(hiddenLayerNodes)):
+            model.add(LSTM(hiddenLayerNodes[i],return_sequences = return_sequences[i], activation = activation, kernel_initializer = initializer,
+             recurrent_activation = rnnActivation, dropout = dropout, recurrent_dropout = rnnDropout))
+    
+    model.add(Dense(Y.shape[1], activation = output_activation, kernel_initializer = initializer))
 
     opt = keras.optimizers.Adam(learning_rate = float(lr))
     model.compile(loss=loss, optimizer = opt, metrics = metric)
-    history = model.fit(X, Y, epochs = int(epochs), batch_size = int(batchSize), verbose = 1)
-
+    history = model.fit(x_reshaped, y_reshaped, epochs = int(epochs), batch_size = int(batchSize), verbose = 1)
 
     dirname = os.path.dirname(__file__)
     
@@ -205,9 +227,91 @@ def rnn_py(X, Y, XForecast, hiddenLayerNodes, classification, activation, epochs
     model.summary(print_fn=lambda x: f.write(x + '\n'))
     f.close()
 
-    predicted = model.predict(XForecast)
+    predicted = model.predict(x_forecast_reshaped)
     return predicted
 
+
+#CONVOLUTIONAL NEURAL NETWORK
+@xw.func
+@xw.arg("X", np.array, ndim = 2)
+@xw.arg("Y", np.array, ndim=2)
+@xw.arg("XForecast", np.array, ndim = 2)
+def cnn_py(X, Y, XForecast, outputLayerNodes, classification, activation, epochs, batchSize, lr,
+            dimension, filters, kernelSize, groups, strides, padding, dilationRate):
+
+    X = X.astype(np.float)
+    XForecast = XForecast.astype(np.float)
+    Y = Y.astype(np.float)
+
+    X, XForecast = scale(X, XForecast)
+    rnnLookback = int(rnnLookback)
+
+    num_features = X.shape[1]
+    rows_train = X.shape[0]-rnnLookback
+    rows_forecast = XForecast.shape[0]-rnnLookback
+
+    if classification:
+        metric = 'accuracy'
+        if Y.shape[1]>1:
+            # ASSUMES labels are one hot encoded
+            output_activation = "softmax"
+            loss = "categorical_crossentropy"
+        else:
+            # ASSUMES labels of 0 or 1
+            output_activation = "sigmoid"
+            loss = 'binary_crossentropy'
+    else:
+        output_activation = "linear"
+        metric = "mae"
+        loss = "mse"
+        
+    model = Sequential()
+    initializer = initializers.HeUniform()
+    inputShape = []
+
+    #Different type of layer used depending on what dimension user put in
+    if dimension == 1:
+        model.add(Conv1D(filters[0], kernelSize, strides, padding, dilation_rate = dilationRate, groups = groups, activation = activation, input_shape = inputShape)
+        model.add(MaxPooling1D(pool_size = 2, filters = filters[0]))
+        
+        for i in range(1, len(filters)):
+            model.add(Conv1D(filters[i], kernelSize, strides, padding, dilation_rate = dilationRate, groups = groups, activation = activation)
+            model.add(MaxPooling1D(pool_size = 2, filters = filters[i]))
+
+    elif dimension == 2:
+        model.add(Conv2D(filters[0], kernelSize, strides, padding, dilation_rate = dilationRate, groups = groups, activation = activation, input_shape = inputShape)
+        model.add(MaxPooling2D(pool_size = 2, filters = filters[0]))
+        
+        for i in range(1, len(filters)):
+            model.add(Conv2D(filters[i], kernelSize, strides, padding, dilation_rate = dilationRate, groups = groups, activation = activation)
+            model.add(MaxPooling2D(pool_size = 2, filters = filters[i]))
+    
+    else:
+        model.add(Conv3D(filters[0], kernelSize, strides, padding, dilation_rate = dilationRate, groups = groups, activation = activation, input_shape = inputShape)
+        model.add(MaxPooling3D(pool_size = 2, filters = filters[0]))
+        
+        for i in range(1, len(filters)):
+            model.add(Conv3D(filters[i], kernelSize, strides, padding, dilation_rate = dilationRate, groups = groups, activation = activation)
+            model.add(MaxPooling3D(pool_size = 2, filters = filters[i]))
+        
+    model.add(Flatten())
+    model.add(Dense(outputLayerNodes, activation = activation, kernel_initializer = initializer)
+    model.add(Dense(Y.shape[1], activation = output_activation, kernel_initializer = initializer))
+
+    opt = keras.optimizers.Adam(learning_rate = float(lr))
+    model.compile(loss=loss, optimizer = opt, metrics = metric)
+    history = model.fit(x_reshaped, y_reshaped, epochs = int(epochs), batch_size = int(batchSize), verbose = 1)
+
+    dirname = os.path.dirname(__file__)
+    
+    f = open(os.path.join(dirname, "rnn model log.txt"), "w")
+    f.write(str(history.history))
+    f.write('\n')
+    model.summary(print_fn=lambda x: f.write(x + '\n'))
+    f.close()
+
+    predicted = model.predict(x_forecast_reshaped)
+    return predicted
 
 
 # SUPPORT VECTOR MACHINE

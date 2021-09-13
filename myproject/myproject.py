@@ -8,15 +8,16 @@ import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import Flatten
-from keras.layers import MaxPooling1D, MaxPooling2D, MaxPooling3D
-from keras.layers import Conv1D, Conv2D, Conv3D
 from keras.layers import SimpleRNN, LSTM, GRU
 from keras.layers import Dropout
 from tensorflow.keras import initializers
 import keras
 import os
 import category_encoders as ce
-
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsRegressor
+from xgboost import XGBRegressor as xgbreg
+from xgboost import XGBClassifier as xgbcla
 
 def fill_missing(X, x_forecast, Y, missing_data_method):
     
@@ -126,6 +127,43 @@ def main():
 
 
 @xw.func
+@xw.arg("X", pd.DataFrame, ndim = 2)
+@xw.arg("Y", pd.DataFrame)
+@xw.arg("x_forecast", pd.DataFrame, ndim = 2)
+def knn_py(X, x_forecast, Y, n_neighbors, weights, algorithm, leaf_size, p, classification, contains_categorical):
+    
+    X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    
+    if classification:
+        model = KNeighborsClassifier(n_neighbors = n_neighbors, weights = weights, algorithm = algorithm, leaf_size = leaf_size, p = p)
+    else:
+        model = KNeighborsRegressor(n_neighbors = n_neighbors, weights = weights, algorithm = algorithm, leaf_size = leaf_size, p = p)
+       
+    model.fit(X, y)
+    predicted = model.predict(x_forecast)
+    return predicted
+    
+@xw.func
+@xw.arg("X", pd.DataFrame, ndim = 2)
+@xw.arg("Y", pd.DataFrame)
+@xw.arg("x_forecast", pd.DataFrame, ndim = 2)
+def xgboost_py(X, x_forecast, Y, learning_rate, max_depth, subsample, colsample_bytree, n_estimators, objective, booster,
+                min_split_loss, sampling_method, classification, contains_categorical):
+        
+    X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    
+
+    model = xbgreg(learning_rate = learning_rate, max_depth = max_depth, subsample = subsample, colsample_bytree = colsample_bytree,
+                        n_estimators = n_estimators, objective = objective, booster = booster,min_split_loss = min_split_loss, sampling_method = sampling_method)
+    model.fit(X, Y)
+    predicted = model.predict(x_forecast)
+    return predicted
+
+@xw.func
 def hello(name):
     return f"Hello {name}!"
 
@@ -160,13 +198,14 @@ def linreg(X, Y, x_forecast, missing_data_method, contains_categorical):
 def logreg(X, Y, x_forecast, penalty, tolerance, c, solver, multi_class, max_iter, missing_data_method, contains_categorical):
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
 
     if len(X.shape) == 1:
         X = X.reshape(-1,1)
         x_forecast = x_forecast.reshape(-1,1)
    
     
-    X, x_forecast = scale(X, x_forecast)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
         
     model = sklearn.linear_model.LogisticRegression(random_state = 0)
     model.fit(X, Y)
@@ -180,14 +219,12 @@ def logreg(X, Y, x_forecast, penalty, tolerance, c, solver, multi_class, max_ite
 @xw.arg("X", np.array, ndim = 2, dtype = 'object')
 @xw.arg("Y", np.array, ndim=2, dtype = 'object')
 @xw.arg("x_forecast", np.array, ndim = 2, dtype = 'object')
-def nn_simple(X, Y, x_forecast, hidden_layer_nodes, classification, activation, epochs, batch_size, lr, missing_data_method, contains_categorical):
-
-    X = X.astype(np.float)
-    x_forecast = x_forecast.astype(np.float)
-    Y = Y.astype(np.float)
+def nn_simple(X, Y, x_forecast, hidden_layer_nodes, classification, activation, epochs, batch_size, lr,
+                missing_data_method, contains_categorical):
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast = scale(X, x_forecast)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
 
     if classification:
         metric = 'accuracy'
@@ -247,7 +284,8 @@ def rnn_py(X, Y, x_forecast, hidden_layer_nodes, classification, activation, epo
     Y = Y.astype(np.float)
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast = scale(X, x_forecast)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
     rnn_lookback = int(rnn_lookback)
 
     dropout = float(dropout)
@@ -343,7 +381,8 @@ def svm_py(X, Y,x_forecast, kernel, degree, C, gamma, classification, missing_da
     Y = Y.astype(np.float)
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast = scale(X, x_forecast)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
 
     x_train, x_test, y_train, y_test = sklearn.model_selection.train_test_split(X, Y, test_size=0.2)
     

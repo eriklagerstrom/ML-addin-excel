@@ -87,8 +87,11 @@ def scale(X, x_forecast, scale_indices = []):
 
     return X, x_forecast
     
-def transform_categorical(X, x_forecast, Y):
+def transform_categorical(X, x_forecast, Y, has_categorical):
     # Currently uses one-hot encoder straight through
+    
+    if not has_categorical:
+        return X, x_forecast, Y, [i for i in range(X.shape[1])]
     
     merged_df = pd.concat([X, x_forecast]) #Make sure that all different kind of values in columns are present
     final_df_x = pd.DataFrame()
@@ -97,19 +100,21 @@ def transform_categorical(X, x_forecast, Y):
     
     # Only apply one-hot encoding on the columns which are not numerical (int, float etc)
     for col in merged_df:
-        if col.dtype == 'object':
-            one_hot_tmp = col.get_dummies(prefix=str(col.name))
+        column = merged_df.iloc[:, col]
+        if column.dtype == 'object':
+            one_hot_tmp = get_dummies(column, prefix=str(col))
             final_df_x = final_df_x.join(one_hot_tmp)
         else:
-            final_df_x = final_df_x.join(col)
+            final_df_x = final_df_x.join(column)
             non_transformed_indices = non_transformed_indices.append(len(final_df.columns)-1)
     
     for col in Y:
-        if col.dtype == 'object':
-            one_hot_tmp = col.get_dummies(prefix=str(col.name))
+        column = Y.iloc[:, col]
+        if column.dtype == 'object':
+            one_hot_tmp = get_dummies(column, prefix=str(col))
             final_df_y = final_df_y.join(one_hot_tmp)
         else:
-            final_df_y = final_df_y.join(col)
+            final_df_y = final_df_y.join(column)
             
     X = final_df_x.iloc[:len(X), :]
     x_forecast = final_df_x.iloc[len(X):, :]
@@ -156,9 +161,12 @@ def xgboost_py(X, x_forecast, Y, learning_rate, max_depth, subsample, colsample_
     X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
     X, x_forecast = scale(X, x_forecast, non_transformed_indices)
     
-
-    model = xbgreg(learning_rate = learning_rate, max_depth = max_depth, subsample = subsample, colsample_bytree = colsample_bytree,
-                        n_estimators = n_estimators, objective = objective, booster = booster,min_split_loss = min_split_loss, sampling_method = sampling_method)
+    if classification:
+        model = xgbcla(learning_rate = learning_rate, max_depth = max_depth, subsample = subsample, colsample_bytree = colsample_bytree,
+                    n_estimators = n_estimators, objective = objective, booster = booster,min_split_loss = min_split_loss, sampling_method = sampling_method)
+    else:
+        model = xgbreg(learning_rate = learning_rate, max_depth = max_depth, subsample = subsample, colsample_bytree = colsample_bytree,
+                    n_estimators = n_estimators, objective = objective, booster = booster,min_split_loss = min_split_loss, sampling_method = sampling_method)
     model.fit(X, Y)
     predicted = model.predict(x_forecast)
     return predicted
@@ -174,14 +182,13 @@ def hello(name):
 def linreg(X, Y, x_forecast, missing_data_method, contains_categorical):
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y, contains_categorical)
 
     if len(X.shape) == 1:
         X = X.reshape(-1,1)
         x_forecast = x_forecast.reshape(-1,1)
     
-    
-    X, x_forecast = scale(X, x_forecast, nonn_transformed_indices)
+    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
 
     model = sklearn.linear_model.LinearRegression()
     model.fit(X, Y)

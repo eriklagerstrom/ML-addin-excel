@@ -96,7 +96,7 @@ def transform_categorical(X, x_forecast, Y, has_categorical):
     merged_df = pd.concat([X, x_forecast]) #Make sure that all different kind of values in columns are present
     final_df_x = pd.DataFrame()
     final_df_y = pd.DataFrame()
-    non_transformed_indices = []
+    scale_indices = []
     
     # Only apply one-hot encoding on the columns which are not numerical (int, float etc)
     for col in merged_df:
@@ -106,7 +106,7 @@ def transform_categorical(X, x_forecast, Y, has_categorical):
             final_df_x = final_df_x.join(one_hot_tmp)
         else:
             final_df_x = final_df_x.join(column)
-            non_transformed_indices = non_transformed_indices.append(len(final_df.columns)-1)
+            scale_indices = scale_indices.append(len(final_df.columns)-1)
     
     for col in Y:
         column = Y.iloc[:, col]
@@ -119,7 +119,7 @@ def transform_categorical(X, x_forecast, Y, has_categorical):
     X = final_df_x.iloc[:len(X), :]
     x_forecast = final_df_x.iloc[len(X):, :]
     
-    return X, x_forecast, final_df_y, non_transformed_indices
+    return X, x_forecast, final_df_y, scale_indices
         
     
 def main():
@@ -138,8 +138,8 @@ def main():
 def knn_py(X, x_forecast, Y, n_neighbors, weights, algorithm, leaf_size, p, classification, contains_categorical):
     
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
     
     if classification:
         model = KNeighborsClassifier(n_neighbors = n_neighbors, weights = weights, algorithm = algorithm, leaf_size = leaf_size, p = p)
@@ -158,8 +158,8 @@ def xgboost_py(X, x_forecast, Y, learning_rate, max_depth, subsample, colsample_
                 min_split_loss, sampling_method, classification, contains_categorical):
         
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
     
     if classification:
         model = xgbcla(learning_rate = learning_rate, max_depth = max_depth, subsample = subsample, colsample_bytree = colsample_bytree,
@@ -182,13 +182,13 @@ def hello(name):
 def linreg(X, Y, x_forecast, missing_data_method, contains_categorical):
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y, contains_categorical)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y, contains_categorical)
 
     if len(X.shape) == 1:
         X = X.reshape(-1,1)
         x_forecast = x_forecast.reshape(-1,1)
     
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
 
     model = sklearn.linear_model.LinearRegression()
     model.fit(X, Y)
@@ -205,14 +205,14 @@ def linreg(X, Y, x_forecast, missing_data_method, contains_categorical):
 def logreg(X, Y, x_forecast, penalty, tolerance, c, solver, multi_class, max_iter, missing_data_method, contains_categorical):
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y)
 
     if len(X.shape) == 1:
         X = X.reshape(-1,1)
         x_forecast = x_forecast.reshape(-1,1)
    
     
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
         
     model = sklearn.linear_model.LogisticRegression(random_state = 0)
     model.fit(X, Y)
@@ -230,8 +230,8 @@ def nn_simple(X, Y, x_forecast, hidden_layer_nodes, classification, activation, 
                 missing_data_method, contains_categorical):
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
 
     if classification:
         metric = 'accuracy'
@@ -291,8 +291,8 @@ def rnn_py(X, Y, x_forecast, hidden_layer_nodes, classification, activation, epo
     Y = Y.astype(np.float)
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
     rnn_lookback = int(rnn_lookback)
 
     dropout = float(dropout)
@@ -388,8 +388,8 @@ def svm_py(X, Y,x_forecast, kernel, degree, C, gamma, classification, missing_da
     Y = Y.astype(np.float)
 
     X, x_forecast, Y = fill_missing(X, x_forecast, Y, missing_data_method)
-    X, x_forecast, Y, non_transformed_indices = transform_categorical(X, x_forecast, Y)
-    X, x_forecast = scale(X, x_forecast, non_transformed_indices)
+    X, x_forecast, Y, scale_indices = transform_categorical(X, x_forecast, Y)
+    X, x_forecast = scale(X, x_forecast, scale_indices)
 
     x_train, x_test, y_train, y_test = sklearn.model_selection.train_test_split(X, Y, test_size=0.2)
     
